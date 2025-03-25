@@ -1,81 +1,60 @@
-// Configuration - replace with your actual backend URL
-const API_URL = 'https://your-backend-api-endpoint.com/run-script';
+# Configuration
+$API_URL = 'https://your-backend-api-endpoint.com/run-script'
 
-// DOM Elements
-const packageIdInput = document.getElementById('packageId');
-const checkButton = document.getElementById('checkButton');
-const logsContainer = document.getElementById('logs');
-
-// Event Listeners
-checkButton.addEventListener('click', runScript);
-packageIdInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
-        runScript();
-    }
-});
-
-async function runScript() {
-    const packageId = packageIdInput.value.trim();
-
-    // Input Validation
-    if (!packageId) {
-        displayLog('Please enter a Package Asset ID', 'error');
-        return;
-    }
-
-    // Disable button and clear previous logs
-    checkButton.disabled = true;
-    logsContainer.innerHTML = '';
-    displayLog('Processing... Please wait', 'info');
+# Function to Run Package Check
+function Invoke-PackageCheck {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$PackageId
+    )
 
     try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ packageId: packageId })
-        });
-
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
+        # Validate input
+        if ([string]::IsNullOrWhiteSpace($PackageId)) {
+            Write-Host "Error: Please enter a valid Package Asset ID" -ForegroundColor Red
+            return
         }
 
-        const data = await response.json();
+        # Prepare request body
+        $body = @{
+            packageId = $PackageId
+        } | ConvertTo-Json
 
-        // Clear previous loading message
-        logsContainer.innerHTML = '';
+        # Send HTTP Request
+        $response = Invoke-RestMethod -Uri $API_URL `
+            -Method Post `
+            -ContentType 'application/json' `
+            -Body $body `
+            -ErrorAction Stop
 
-        // Process and display logs
-        data.logs.forEach(log => {
-            let logType = 'info';
-            if (log.includes('[ERROR]')) {
-                logType = 'error';
-            } else if (log.includes('[WARNING]')) {
-                logType = 'warning';
+        # Process and display logs
+        foreach ($log in $response.logs) {
+            switch -Wildcard ($log) {
+                "*[ERROR]*" { 
+                    Write-Host $log -ForegroundColor Red 
+                }
+                "*[WARNING]*" { 
+                    Write-Host $log -ForegroundColor Yellow 
+                }
+                default { 
+                    Write-Host $log -ForegroundColor Green 
+                }
             }
-            displayLog(log, logType);
-        });
-
-    } catch (error) {
-        displayLog(`Error: ${error.message}`, 'error');
-    } finally {
-        // Re-enable button
-        checkButton.disabled = false;
+        }
+    }
+    catch {
+        Write-Host "Error occurred: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
 
-function displayLog(message, type = 'info') {
-    const logEntry = document.createElement('div');
-    logEntry.classList.add(`log-${type}`);
-    logEntry.textContent = message;
-    logsContainer.appendChild(logEntry);
-    
-    // Auto-scroll to bottom
-    logsContainer.scrollTop = logsContainer.scrollHeight;
-}
+# Interactive Prompt
+while ($true) {
+    Write-Host "Enter Package Asset ID (or 'quit' to exit):"
+    $packageId = Read-Host
 
-// Optional: Add error handling for unhandled promise rejections
-window.addEventListener('unhandledrejection', (event) => {
-    displayLog(`Unhandled error: ${event.reason}`, 'error');
-});
+    if ($packageId -eq 'quit') {
+        break
+    }
+
+    Invoke-PackageCheck -PackageId $packageId
+}
